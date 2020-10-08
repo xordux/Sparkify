@@ -153,10 +153,20 @@ def main():
     cur = conn.cursor()
     process_data(cur, conn, filepath='data/song_data', func=process_song_file)
 
+    """
+    Since for log_data we want to write a fast method therefore, in order
+    to use copy_from, we follow a 3 step process:
+        1. Create empty tmp_table from main_table (without primary keys)
+        2. Load data into tmp_table
+        3. Copy only distinct data into main_table as per primary 
+           contraints(and on conflict do nothing).
+     """
     tables = ["time", "users", "songplays"]
     for tab in tables:
         create_temp_table(cur, tab)
+
     process_data(cur, conn, filepath='data/log_data', func=process_log_file)
+
     for qry in insert_from_tmp:
         cur.execute(qry)
 
