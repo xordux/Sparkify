@@ -27,7 +27,8 @@ def process_song_file(cur, filepath):
 
     # insert artist record
     artist_data = df[["artist_id", "artist_name", "artist_location",
-                     "artist_latitude", "artist_longitude"]].values[0].tolist()
+                      "artist_latitude", "artist_longitude"]].values[
+        0].tolist()
     cur.execute(artist_table_insert, artist_data)
 
 
@@ -61,14 +62,14 @@ def process_log_file(cur, filepath):
     time_df = pd.concat(time_data, axis=1, keys=column_labels)
 
     data = StringIO(time_df.to_csv(index=False, header=False))
-    cur.copy_from(data, 'time', sep=",", columns=(
+    cur.copy_from(data, 'tmp_time', sep=",", columns=(
         "start_time", "hour", "day", "week", "month", "year", "weekday"))
 
     # load user table
     user_df = df[["userId", "firstName", "lastName", "gender", "level"]]
     # insert user records
     data = StringIO(user_df.to_csv(index=False, header=False))
-    cur.copy_from(data, 'users', sep=",", columns=(
+    cur.copy_from(data, 'tmp_users', sep=",", columns=(
         "user_id", "first_name", "last_name", "gender", "level"))
 
     data = []
@@ -84,10 +85,10 @@ def process_log_file(cur, filepath):
             songid, artistid = None, None
 
         # insert songplay record
-        print(str(row["ts"]) + " " + str(pd.to_datetime(row["ts"])))
+        location = "NULL" if row["location"] == "" else row["location"]
         songplay_data = map(str, (
             pd.to_datetime(row["ts"]), row["userId"], row["level"], songid,
-            artistid, row["sessionId"], row["location"],
+            artistid, row["sessionId"], location,
             row["userAgent"]))
         data.append("|".join(songplay_data))
 
@@ -95,7 +96,7 @@ def process_log_file(cur, filepath):
         "START_TIME", "USER_ID", "LEVEL", "SONG_ID", "ARTIST_ID", "SESSION_ID",
         "LOCATION", "USER_AGENT")
     data = StringIO("\n".join(data))
-    cur.copy_from(data, 'songplays', sep="|", columns=cols)
+    cur.copy_from(data, 'tmp_songplays', sep="|", columns=cols)
 
 
 def process_data(cur, conn, filepath, func):
@@ -126,42 +127,23 @@ def process_data(cur, conn, filepath, func):
         print('{}/{} files processed.'.format(i, num_files))
 
 
-def remove_duplicates(cur, table_name):
+def create_temp_table(cur, table_name):
     """
-    Removes all the duplicate records in a table.
+    Creates a temp table for fast insertion of data.
+    The Temp table will not have Primary Key constraint.
 
-    This method:
-        1. Copies the original table into a temporary table.
-        2. Drops the original table.
-        3. Recreates the original table from duplicate table but only selects
-           the distinct rows.
-    Duplicate row is defined as any row which has all fields identical to
-    another row.
-
-    :param cur: cursor of connected database
-    :param table_name: Name of the table which might have duplicate rows
+    :param cur: Cursor to Database
+    :param table_name: Table from which temp will be created
     :return: None
     """
-    drop_temp = "DROP TABLE IF EXISTS tmp_table;"
-    cur.execute(drop_temp)
-
-    temp_create = (
-        "CREATE temp TABLE tmp_table "
-        "  on commit DROP "
-        "AS "
-        "  SELECT * "
-        f"  FROM   {table_name}; ")
-    cur.execute(temp_create)
-
-    drop_main = f"DROP TABLE {table_name};"
-    cur.execute(drop_main)
-
-    create_main = (
-        f"CREATE TABLE {table_name} "
-        f"AS "
-        f"SELECT DISTINCT * "
-        f"from tmp_table;")
-    cur.execute(create_main)
+    query = f"DROP TABLE IF EXISTS tmp_{table_name};"
+    cur.execute(query)
+    query = (f"CREATE TEMP TABLE tmp_{table_name} "
+             "AS "
+             "SELECT * "
+             f"FROM {table_name} "
+             "WITH NO DATA; ")
+    cur.execute(query)
 
 
 def main():
@@ -170,13 +152,23 @@ def main():
         "host=127.0.0.1 dbname=sparkifydb user=student password=student")
     cur = conn.cursor()
     process_data(cur, conn, filepath='data/song_data', func=process_song_file)
+
+    """
+    Since for log_data we want to write a fast method therefore, in order
+    to use copy_from, we follow a 3 step process:
+        1. Create empty tmp_table from main_table (without primary keys)
+        2. Load data into tmp_table
+        3. Copy only distinct data into main_table as per primary 
+           contraints(and on conflict do nothing).
+     """
+    tables = ["time", "users", "songplays"]
+    for tab in tables:
+        create_temp_table(cur, tab)
+
     process_data(cur, conn, filepath='data/log_data', func=process_log_file)
 
-    tab_pk_dict = {"users": "user_id",
-                   "songs": "song_id",
-                   "artists": "artist_id"}
-    for table in tab_pk_dict:
-        remove_duplicates(cur, table)
+    for qry in insert_from_tmp:
+        cur.execute(qry)
 
     conn.commit()
     conn.close()
