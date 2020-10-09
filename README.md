@@ -17,7 +17,8 @@ This code can perform ETL on the dataset and load all the data into Postgres DB,
  - To start ETL process run `python etl.py`
 
 ## Schema for Song Play Analysis
-Fact and dimension tables were defined for a star schema for analytics purposes.
+Fact and dimension tables were defined for a star schema for analytics purposes.  
+![Star Schema](start_schema.png)
 
 #### Fact Table
 * `songplays`: records in log data associated with song plays i.e. records with page NextSong
