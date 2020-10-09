@@ -12,11 +12,11 @@ songplay_table_create = (
     "CREATE TABLE songplays "
     "  ( "
     "     songplay_id SERIAL PRIMARY KEY, "
-    "     start_time  TIME NOT NULL, "
-    "     user_id     INT NOT NULL, "
+    "     start_time  TIME NOT NULL REFERENCES time, "
+    "     user_id     INT NOT NULL REFERENCES users, "
     "     level       TEXT NOT NULL, "
-    "     song_id     TEXT NOT NULL, "
-    "     artist_id   TEXT NOT NULL, "
+    "     song_id     TEXT NOT NULL REFERENCES songs, "
+    "     artist_id   TEXT NOT NULL REFERENCES artists, "
     "     session_id  INT NOT NULL, "
     "     location    TEXT, "
     "     user_agent  TEXT "
@@ -25,12 +25,11 @@ songplay_table_create = (
 user_table_create = (
     "CREATE TABLE users "
     "  ( "
-    "     user_id    INT, "
+    "     user_id    INT PRIMARY KEY, "
     "     first_name TEXT, "
     "     last_name  TEXT, "
     "     gender     TEXT, "
-    "     level      TEXT, "
-    "     PRIMARY KEY(user_id, level)"
+    "     level      TEXT "
     "  ); ")
 
 song_table_create = (
@@ -56,7 +55,7 @@ artist_table_create = (
 time_table_create = (
     "CREATE TABLE time "
     "  ( "
-    "     start_time TIME, "
+    "     start_time TIME PRIMARY KEY, "
     "     hour       INT, "
     "     day        INT, "
     "     week       INT, "
@@ -67,57 +66,94 @@ time_table_create = (
 
 # INSERT RECORDS
 
-songplay_table_insert = (
-    "INSERT INTO songplays "
-    "            (start_time, "
-    "             user_id, "
-    "             level, "
-    "             song_id, "
-    "             artist_id, "
-    "             session_id, "
-    "             location, "
-    "             user_agent) "
-    "VALUES      (%s, %s, %s, %s, %s, %s, %s, %s); ")
-
-user_table_insert = (
-    "INSERT INTO users "
-    "            (user_id, "
-    "             first_name, "
-    "             last_name, "
-    "             gender, "
-    "             level)"
-    "VALUES     (%s, %s, %s, %s, %s); ")
-
 song_table_insert = (
-    "INSERT INTO songs "
-    "            (song_id, "
-    "             title, "
-    "             artist_id, "
-    "             YEAR, "
-    "             duration) "
-    "VALUES     (%s, %s, %s, %s, %s)"
-    "ON CONFLICT DO NOTHING; ")
+    "INSERT INTO"
+    "    songs (song_id, title, artist_id, YEAR, duration) "
+    "VALUES"
+    "    (%s, %s, %s, %s, %s)"
+    "    ON CONFLICT (song_id) DO UPDATE "
+    "        SET"
+    "            title = "
+    "            CASE"
+    "                WHEN"
+    "                    songs.title = '' OR songs.title = 'None' "
+    "                THEN"
+    "                    EXCLUDED.title "
+    "                ELSE"
+    "                    songs.title "
+    "            END"
+    "        , artist_id = "
+    "            CASE"
+    "                WHEN"
+    "                    songs.artist_id = '' OR songs.artist_id = 'None' "
+    "                THEN"
+    "                    EXCLUDED.artist_id "
+    "                ELSE"
+    "                    songs.artist_id "
+    "            END"
+    "        , year = "
+    "            CASE"
+    "                WHEN"
+    "                    songs.year = double precision 'NaN' "
+    "                THEN"
+    "                    EXCLUDED.year "
+    "                ELSE"
+    "                    songs.year "
+    "            END"
+    "        , duration = "
+    "            CASE"
+    "                WHEN"
+    "                    songs.duration = double precision 'NaN' "
+    "                THEN"
+    "                    EXCLUDED.duration "
+    "                ELSE"
+    "                    songs.duration "
+    "            END;")
 
 artist_table_insert = (
-    "INSERT INTO artists "
-    "            (artist_id, "
-    "             name, "
-    "             location, "
-    "             latitude, "
-    "             longitude) "
-    "VALUES     (%s, %s, %s, %s, %s)"
-    "ON CONFLICT DO NOTHING; ")
+    "INSERT INTO"
+    "    artists (artist_id, name, location, latitude, longitude) "
+    "VALUES"
+    "    (%s, %s, %s, %s, %s)"
+    "    ON CONFLICT (artist_id) DO UPDATE"
+    "        SET"
+    "          name = "
+    "            CASE"
+    "                WHEN"
+    "                    artists.name = '' OR artists.name = 'None' "
+    "                THEN"
+    "                    EXCLUDED.name "
+    "                ELSE"
+    "                    artists.name "
+    "            END"
+    "    , location = "
+    "            CASE"
+    "                WHEN"
+    "                    artists.location = '' OR artists.location = 'None' "
+    "                THEN"
+    "                    EXCLUDED.location "
+    "                ELSE"
+    "                    artists.location "
+    "            END"
+    "    , latitude = "
+    "            CASE"
+    "                WHEN"
+    "                    artists.latitude = DOUBLE PRECISION 'NaN' "
+    "                THEN"
+    "                    EXCLUDED.latitude "
+    "                ELSE"
+    "                    artists.latitude "
+    "            END"
+    "    , longitude = "
+    "            CASE"
+    "                WHEN"
+    "                    artists.longitude = DOUBLE PRECISION 'NaN' "
+    "                THEN"
+    "                    EXCLUDED.longitude "
+    "                ELSE"
+    "                    artists.longitude "
+    "            END; ")
 
-time_table_insert = (
-    "INSERT INTO time "
-    "            (start_time, "
-    "            hour, "
-    "            day, "
-    "            week, "
-    "            month, "
-    "            year, "
-    "            weekday) "
-    "VALUES    (%s, %s, %s, %s, %s, %s, %s); ")
 
 # FIND SONGS
 
@@ -133,30 +169,39 @@ song_select = (
 
 # Insert from temp
 insert_from_tmp_time = (
-    "INSERT INTO time "
-    "SELECT * "
-    "FROM   tmp_time "
-    "ON CONFLICT DO NOTHING;")
+    "INSERT INTO"
+    "    time "
+    "    SELECT DISTINCT"
+    "        On (start_time) * "
+    "    FROM"
+    "        tmp_time "
+    "        ON CONFLICT DO NOTHING;")
 
 insert_from_tmp_users = (
-    "INSERT INTO users "
-    "SELECT DISTINCT "
-    "On     (user_id, level) * "
-    "FROM   tmp_users "
-    "WHERE  user_id IS NOT NULL "
-    "AND    level IS NOT NULL "
-    "ON CONFLICT DO NOTHING;")
+    "INSERT INTO"
+    "    users "
+    "    SELECT DISTINCT"
+    "        On (user_id) * "
+    "    FROM"
+    "        tmp_users "
+    "    WHERE"
+    "        user_id IS NOT NULL "
+    "        AND level IS NOT NULL "
+    "        ON CONFLICT (user_id) DO "
+    "        UPDATE"
+    "        SET"
+    "            level = EXCLUDED.level;")
 
 insert_from_tmp_songplays = (
-    "INSERT INTO songplays "
-    "           (start_time, "
-    "            user_id, "
-    "            level, "
-    "            song_id, "
-    "            artist_id, "
-    "            session_id, "
-    "            location, "
-    "            user_agent) "
+    "INSERT INTO songplays ("
+    "        start_time, "
+    "        user_id, "
+    "        level, "
+    "        song_id, "
+    "        artist_id, "
+    "        session_id, "
+    "        location, "
+    "        user_agent ) "
     "SELECT start_time, "
     "       user_id, "
     "       level, "
@@ -166,13 +211,14 @@ insert_from_tmp_songplays = (
     "       location, "
     "       user_agent "
     "FROM   tmp_songplays "
-    "ON CONFLICT DO NOTHING;")
+    "WHERE  song_id <> 'None' AND "
+    "       artist_id <> 'None';")
 
 # QUERY LISTS
 
-create_table_queries = [songplay_table_create, user_table_create,
+create_table_queries = [user_table_create,
                         song_table_create, artist_table_create,
-                        time_table_create]
+                        time_table_create, songplay_table_create]
 drop_table_queries = [songplay_table_drop, user_table_drop, song_table_drop,
                       artist_table_drop, time_table_drop]
 

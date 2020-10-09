@@ -53,6 +53,7 @@ def process_log_file(cur, filepath):
 
     # convert timestamp column to datetime
     t = pd.to_datetime(df['ts'], unit='ms')
+    df['ts'] = t
 
     # insert time data records
     time_data = (
@@ -114,7 +115,11 @@ def process_data(cur, conn, filepath, func):
     for root, dirs, files in os.walk(filepath):
         files = glob.glob(os.path.join(root, '*.json'))
         for f in files:
-            all_files.append(os.path.abspath(f))
+            all_files.append([os.path.basename(f), os.path.abspath(f)])
+
+    # Sort the files according to names and keep only full path in all_files
+    all_files = sorted(all_files, key=lambda x: x[0])
+    all_files = [x[1] for x in all_files]
 
     # get total number of files found
     num_files = len(all_files)
@@ -158,7 +163,7 @@ def main():
     to use copy_from, we follow a 3 step process:
         1. Create empty tmp_table from main_table (without primary keys)
         2. Load data into tmp_table
-        3. Copy only distinct data into main_table as per primary 
+        3. Copy only distinct data into main_table as per primary
            contraints(and on conflict do nothing).
      """
     tables = ["time", "users", "songplays"]
